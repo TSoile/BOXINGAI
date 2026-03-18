@@ -1,4 +1,11 @@
 import json
+import os
+import signal
+import threading
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Tuple
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +17,22 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="BoKing", page_icon="🥊", layout="wide")
+
+
+def request_app_shutdown() -> None:
+    """
+    Gracefully stop the local Streamlit process when the user clicks Close.
+    """
+    pid = os.getpid()
+
+    def _shutdown() -> None:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            os._exit(0)
+
+    # Small delay allows the UI message to render before termination.
+    threading.Timer(0.5, _shutdown).start()
 
 
 @dataclass
@@ -63,6 +86,7 @@ def detect_fighters_hog(frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
         detections.append((x, y, w, h, float(score)))
 
     detections.sort(key=lambda item: item[4], reverse=True)
+    best_boxes = [(int(x), int(y), int(w), int(h)) for x, y, w, h, _ in detections[:2]]
     best_boxes = [(x, y, w, h) for x, y, w, h, _ in detections[:2]]
 
     if len(best_boxes) < 2:
@@ -75,6 +99,23 @@ def detect_fighters_hog(frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
 
     best_boxes = sorted(best_boxes, key=lambda b: b[0])
     return best_boxes[:2]
+
+
+def sanitize_bbox(
+    box: Tuple[float, float, float, float], frame_shape: Tuple[int, int, int]
+) -> Tuple[int, int, int, int]:
+    """
+    Convert any bbox to a plain Python int tuple and clamp it to frame bounds.
+    This prevents OpenCV tracker init/update argument-type errors on some builds.
+    """
+    frame_h, frame_w = frame_shape[:2]
+    x, y, w, h = [int(round(float(v))) for v in box]
+
+    x = max(0, min(x, frame_w - 2))
+    y = max(0, min(y, frame_h - 2))
+    w = max(2, min(w, frame_w - x))
+    h = max(2, min(h, frame_h - y))
+    return (x, y, w, h)
 
 
 def center_of(box: Tuple[float, float, float, float]) -> Tuple[float, float]:
@@ -136,6 +177,14 @@ def process_video(video_path: Path) -> Dict[str, object]:
     tracker_a = create_tracker()
     tracker_b = create_tracker()
 
+    init_box_a = sanitize_bbox(boxes[0], first_frame.shape)
+    init_box_b = sanitize_bbox(boxes[1], first_frame.shape)
+
+    tracker_a.init(first_frame, init_box_a)
+    tracker_b.init(first_frame, init_box_b)
+
+    fighter_a = FighterState("Fighter A", (0, 255, 0), [center_of(tuple(map(float, init_box_a)))])
+    fighter_b = FighterState("Fighter B", (0, 128, 255), [center_of(tuple(map(float, init_box_b)))])
     tracker_a.init(first_frame, tuple(map(float, boxes[0])))
     tracker_b.init(first_frame, tuple(map(float, boxes[1])))
 
@@ -245,6 +294,10 @@ st.title("🥊 BoKing")
 st.caption(
     "Upload boxing sparring footage, track both fighters, and get punch-landed stats back."
 )
+
+if st.sidebar.button("Close BoKing App"):
+    st.sidebar.success("Closing BoKing...")
+    request_app_shutdown()
 
 with st.expander("How it works", expanded=True):
     st.markdown(

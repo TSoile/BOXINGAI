@@ -22,3 +22,4 @@ streamlit run app.py
 
 - This is an MVP for analysis, not an official judging/scoring system.
 - Punch detection is heuristic and should be calibrated for your camera angle and video quality.
+- Use the **Close BoKing App** button in the sidebar (or `Ctrl + C` in terminal) to stop the app.
