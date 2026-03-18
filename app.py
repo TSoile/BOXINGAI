@@ -6,6 +6,10 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -83,6 +87,7 @@ def detect_fighters_hog(frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
 
     detections.sort(key=lambda item: item[4], reverse=True)
     best_boxes = [(int(x), int(y), int(w), int(h)) for x, y, w, h, _ in detections[:2]]
+    best_boxes = [(x, y, w, h) for x, y, w, h, _ in detections[:2]]
 
     if len(best_boxes) < 2:
         h, w = frame.shape[:2]
@@ -180,6 +185,11 @@ def process_video(video_path: Path) -> Dict[str, object]:
 
     fighter_a = FighterState("Fighter A", (0, 255, 0), [center_of(tuple(map(float, init_box_a)))])
     fighter_b = FighterState("Fighter B", (0, 128, 255), [center_of(tuple(map(float, init_box_b)))])
+    tracker_a.init(first_frame, tuple(map(float, boxes[0])))
+    tracker_b.init(first_frame, tuple(map(float, boxes[1])))
+
+    fighter_a = FighterState("Fighter A", (0, 255, 0), [center_of(tuple(map(float, boxes[0])))])
+    fighter_b = FighterState("Fighter B", (0, 128, 255), [center_of(tuple(map(float, boxes[1])))])
 
     stats_rows = []
     progress = st.progress(0.0)
